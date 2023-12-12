@@ -30,8 +30,8 @@ class Candidate_Ranker(object):
         print('#queries: ', len(self.queries))
         
         self.bi_encoder = SentenceTransformer(model_path) #, device = 'cpu'
-        self.candidates_embeddings = self.bi_encoder.encode(self.candidates, convert_to_tensor=True, device ='cuda')
-        self.queries_embeddings = self.bi_encoder.encode(self.queries, convert_to_tensor=True, device ='cuda')
+        self.candidates_embeddings = self.bi_encoder.encode(self.candidates, convert_to_tensor=True, device ='cuda' if torch.cuda.is_available() else 'cpu')
+        self.queries_embeddings = self.bi_encoder.encode(self.queries, convert_to_tensor=True, device ='cuda' if torch.cuda.is_available() else 'cpu')
         
     # This function will search all standard symptoms for queries that match the query
     def search_candidates(self, query, top_k = 5, return_scores= False, threshold = 0):
@@ -47,7 +47,7 @@ class Candidate_Ranker(object):
         Returns:
         A list of candidate symptoms that match the input query.
         """
-        question_embedding = self.bi_encoder.encode(query, convert_to_tensor=True, device ='cuda')
+        question_embedding = self.bi_encoder.encode(query, convert_to_tensor=True, device ='cuda' if torch.cuda.is_available() else 'cpu')
         hits = util.semantic_search(question_embedding, self.candidates_embeddings, top_k = top_k)
         hits = hits[0]
         if return_scores:
@@ -79,13 +79,13 @@ class Candidate_Ranker(object):
         """
                                    
         if anchor == 'query':
-           query_embeddings = self.bi_encoder.encode(query, convert_to_tensor=True, device ='cuda')
+           query_embeddings = self.bi_encoder.encode(query, convert_to_tensor=True, device ='cuda' if torch.cuda.is_available() else 'cpu')
            hits = util.semantic_search(query_embeddings, self.candidates_embeddings, top_k=len(self.candidates))
            hits = hits[0]
            hits = [(self.candidates[hit['corpus_id']],min(max(hit['score'],0.001),1)) for hit in hits if self.candidates[hit['corpus_id']]!=true_candidate]
            hits_cp = [item for item in hits if item[1]>=positive_threshold] # positive predictions
         elif anchor == 'candidate':
-           candidate_embedding = self.bi_encoder.encode(true_candidate, convert_to_tensor=True, device ='cuda')
+           candidate_embedding = self.bi_encoder.encode(true_candidate, convert_to_tensor=True, device ='cuda' if torch.cuda.is_available() else 'cpu')
            hits = util.semantic_search(candidate_embedding, self.queries_embeddings, top_k=len(self.queries))
            hits = hits[0]
            hits = [(self.queries[hit['corpus_id']],min(max(hit['score'],0.001),1)) for hit in hits if self.queries[hit['corpus_id']]!=query]
@@ -149,8 +149,8 @@ class Candidate_Ranker(object):
         return [candts[i] for i in indices]
 
     def cos_sim(self, query, target):
-        query_emb = self.bi_encoder.encode(query, convert_to_tensor=True, device ='cuda')
-        target_emb = self.bi_encoder.encode(target, convert_to_tensor=True, device ='cuda')
+        query_emb = self.bi_encoder.encode(query, convert_to_tensor=True, device ='cuda' if torch.cuda.is_available() else 'cpu')
+        target_emb = self.bi_encoder.encode(target, convert_to_tensor=True, device ='cuda' if torch.cuda.is_available() else 'cpu')
         return util.cos_sim(query_emb,target_emb).tolist()[0]
 
 if __name__=='__main__':

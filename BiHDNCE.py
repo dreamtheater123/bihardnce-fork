@@ -20,7 +20,7 @@ logging.basicConfig(format='%(asctime)s - %(message)s',
                     handlers=[LoggingHandler()])
 
 # Tune the beta value (threshold) for hard-negative mining (excluding possible false negatives).                   
-def tune_beta(cls, validation, alpha):
+def tune_beta(cls, validation, alpha, result_save_path=sys.argv[1], epoch=sys.argv[2]):
     logging.info("Tuning beta: ")
     text1 = validation['text1'].tolist()
     text2 = validation['text2'].tolist()
@@ -43,9 +43,10 @@ def tune_beta(cls, validation, alpha):
     logging.info("Tuned beta is : "+ str(beta))
  
     # Write beta value to file
-    result_save_path = 'results/'+sys.argv[1]+'_re.txt'
+    result_save_path = 'results/'+result_save_path+'_re.txt'
+    # result_save_path = 'results/' + 'bihardnce' + '_re.txt'
     textfile = open(result_save_path, "a")
-    textfile.write("Epoch "+ sys.argv[2]+"\n")
+    textfile.write("Epoch "+ epoch+"\n")
     textfile.write('alpha: '+ str(alpha)+ "\n")
     textfile.write('beta: '+ str(beta)+ "\n")
     textfile.close()
@@ -100,7 +101,7 @@ def build_model(model_path, max_seq_length):
 
 
 # Training function 
-def train_func(model, model_path, train_dataloader, evaluator, num_hard_negatives):
+def train_func(model, model_path, train_dataloader, evaluator, num_hard_negatives, lr=2e-5):
     logging.info("Training: ")
     
     # Use BidirectionalHardNegativesRankingLoss to train the model
@@ -112,15 +113,59 @@ def train_func(model, model_path, train_dataloader, evaluator, num_hard_negative
               epochs=1,
               evaluation_steps=math.ceil(len(train_dataloader) * 0.25),
               warmup_steps=math.ceil(len(train_dataloader) * 0.1),
+              optimizer_params={'lr': lr},
               output_path=model_path,
               show_progress_bar=True)
 
 
+def optuna_train(model_path_ori, num_epoch, train_batch_size, lr, max_seq_length):
+    """
+    put the running code here for optuna to do the hyperparameter tuning
+    :return: None
+    """
+
+    num_epoch = num_epoch
+    model_path = 'models/'+ model_path_ori
+
+    logging.info("Loading datasets: ")
+    training = pd.read_csv('data/training_ct.csv', sep='\t')
+    validation = pd.read_csv('data/validation.csv', sep='\t')
+
+    # hyper-parameters
+    num_hard_negative_queries = 10
+    num_hard_negative_candidates = 3
+    train_batch_size = train_batch_size
+    max_seq_length = max_seq_length
+    positive_threshold = 0 if num_epoch == 0 else 0.5
+    alpha = 0.8 + 0.015 * num_epoch
+    sampling_method = 'multinomial'
+    # sampling_method: ['topK', 'topK_with_E-FN', 'larger_than_true', 'larger_than_true_with_E-FN', 'multinomial', 'multinomial_with_E-FN']
+
+    # Loading the ranking function and tuning thresholds
+    cls = Candidate_Ranker(model_path=model_path)
+    beta = tune_beta(cls, validation, alpha, model_path_ori, str(num_epoch))
+    beta = 1 if num_epoch == 0 else beta
+
+    # Generating hard negatives for training data
+    train_dataloader, evaluator = preprocessing_dataset(cls, positive_threshold, beta, training, validation,
+                                                        train_batch_size, num_hard_negative_queries,
+                                                        num_hard_negative_candidates, sampling_method)
+
+    # Building the model and training the model
+    model = build_model(model_path, max_seq_length)
+    train_func(model, model_path, train_dataloader, evaluator, num_hard_negative_queries, lr=lr)
+
 
 if __name__=='__main__':
-   
-   num_epoch = int(sys.argv[2])   
+
+   # TODO: Check!!! should label always be one since we're using cross entropy as the contrastive loss?
+   # TODO: Check evaluation metrics!!
+
+   num_epoch = int(sys.argv[2])
    model_path = 'models/'+sys.argv[1]
+
+   # num_epoch = 0
+   # model_path = 'models/bihardnce'
 
    logging.info("Loading datasets: ")
    training = pd.read_csv('data/training_ct.csv', sep = '\t')
