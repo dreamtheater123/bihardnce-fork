@@ -54,7 +54,7 @@ Please cite our paper if you use Bi-hardNCE in your work:
 }
 ```
 
-### Written by cwq
+# Written by cwq
 ## Steps
 1. run using the bash script.
 2. run `optuna.py` to find the best hyperparameters.
